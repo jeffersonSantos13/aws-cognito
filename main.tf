@@ -20,62 +20,38 @@ resource "aws_iam_role" "lambda_role" {
 }
 
 resource "aws_cognito_user_pool" "dev-account" {
-  name                     = "dev-account-pool"
-  username_attributes      = ["email"]
-  auto_verified_attributes = ["email"]
-
-  password_policy {
-    minimum_length = 8
-  }
-
-  verification_message_template {
-    default_email_option = "CONFIRM_WITH_CODE"
-    email_subject        = "Account Confirmation"
-    email_message        = "Your confirmation code is {####}"
-  }
-
-  schema {
-    attribute_data_type      = "String"
-    developer_only_attribute = false
-    mutable                  = true
-    name                     = "email"
-    required                 = true
-
-    string_attribute_constraints {
-      min_length = 1
-      max_length = 256
-    }
-  }
+  name = "dev-account-pool"
 }
 
 resource "aws_cognito_user_pool_client" "dev-account-client" {
-  name         = "dev-app-client"
-  user_pool_id = aws_cognito_user_pool.dev-account.id
-
-  # (Optional) Whether the client is allowed to follow the OAuth protocol when interacting with Cognito user pools.
+  name                                 = "dev-app-client"
+  user_pool_id                         = aws_cognito_user_pool.dev-account.id
   allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_flows                  = ["client_credentials"]
+  generate_secret                      = true
+  refresh_token_validity               = "30"
+  allowed_oauth_scopes                 = aws_cognito_resource_server.resource_server.scope_identifiers
 
-  #  (Optional) List of allowed OAuth flows (code, implicit, client_credentials).
-  allowed_oauth_flows = ["code"]
-
-  # Add token validity settings
-  access_token_validity  = 3  # 1 hour (in seconds)
-  refresh_token_validity = 30 # 30 days (in seconds)
-  id_token_validity      = 1  # 1 hour (in seconds)
-
-  allowed_oauth_scopes         = ["email", "openid"]
-  callback_urls                = ["http://localhost:8000/callback.html"]
-  supported_identity_providers = ["COGNITO"]
-
-  explicit_auth_flows = [
-    "ALLOW_REFRESH_TOKEN_AUTH",
-    "ALLOW_USER_SRP_AUTH",
-    "ALLOW_USER_PASSWORD_AUTH"
+  depends_on = [
+    aws_cognito_resource_server.resource_server,
+    aws_cognito_user_pool_domain.main
   ]
 }
 
+resource "aws_cognito_resource_server" "resource_server" {
+  identifier = "https://apollo.com"
+  name       = "apollo"
+
+  scope {
+    scope_name        = "read"
+    scope_description = "read"
+  }
+
+  user_pool_id = aws_cognito_user_pool.dev-account.id
+}
+
 resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "apollo-domain-login-test"
+  domain       = "apollo-domain-login"
   user_pool_id = aws_cognito_user_pool.dev-account.id
 }
 
@@ -113,17 +89,6 @@ resource "aws_api_gateway_method_response" "gateway_response" {
   status_code = "200"
 }
 
-/* resource "aws_api_gateway_integration_response" "jwt_response" {
-  rest_api_id = aws_api_gateway_rest_api.sit.id
-  resource_id = aws_api_gateway_resource.sit_resource.id
-  http_method = aws_api_gateway_method.sit_method.http_method
-  status_code = aws_api_gateway_method_response.gateway_response.status_code
-
-  response_templates = {
-    "application/json" = ""
-  }
-} */
-
 resource "aws_lambda_function" "cognito_login" {
   filename         = "./bin/login.zip"
   function_name    = "handler"
@@ -131,12 +96,6 @@ resource "aws_lambda_function" "cognito_login" {
   handler          = "main"
   source_code_hash = filebase64sha256("./bin/login.zip")
   runtime          = "go1.x"
-  environment {
-    variables = {
-      APP_CLIENT_ID = var.app_client_id,
-      USER_POOL_ID  = var.user_pool_id
-    }
-  }
 }
 
 resource "aws_iam_policy_attachment" "lambda_execution" {
@@ -171,6 +130,6 @@ output "api_gateway_url" {
   value = aws_api_gateway_deployment.deployment.invoke_url
 }
 
-output "cognito_domain_url" {
-  value = "https://${aws_cognito_user_pool_domain.main.domain}.auth.us-east-1.amazoncognito.com"
+output "aws_cognito_resource_server" {
+  value = aws_cognito_resource_server.resource_server.scope_identifiers
 }

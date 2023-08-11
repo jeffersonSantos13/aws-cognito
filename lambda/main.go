@@ -3,14 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"os"
+	"net/url"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/cognitoidentityprovider"
+	"github.com/go-resty/resty/v2"
 )
 
 func main() {
@@ -18,56 +17,50 @@ func main() {
 }
 
 type AuthRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	ClientId     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
 }
 
-type AuthReponse struct {
-	AccessToken  string `json:"acess_token"`
-	ExpiresIn    int64  `json:"expires_in"`
-	TokenType    string `json:"token_type"`
-	RefreshToken string `json:"refresh_token"`
+type TokenResponse struct {
+	AccessToken string `json:"access_token"`
+	ExpiresIn   int64  `json:"expires_in"`
+	TokenType   string `json:"token_type"`
 }
 
 func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	var authRequest AuthRequest
+	fmt.Println("Received Event")
 
-	err := json.Unmarshal([]byte(request.Body), &authRequest)
+	formData, err := url.ParseQuery(request.Body)
+	if err != nil {
+		return events.APIGatewayProxyResponse{StatusCode: 400}, err
+	}
+
+	clientID := formData.Get("client_id")
+	clientSecret := formData.Get("client_secret")
+
+	client := resty.New()
+
+	r, _ := client.R().
+		SetFormData(map[string]string{
+			"client_id":     clientID,
+			"client_secret": clientSecret,
+			"grant_type":    "client_credentials",
+		}).
+		Post("https://apollo-domain-login.auth.us-east-1.amazoncognito.com/oauth2/token")
+
+	if r.StatusCode() != 200 {
+		return response(http.StatusUnauthorized, "authentication failed"), nil
+	}
+
+	var authRequest TokenResponse
+
+	err = json.Unmarshal([]byte(r.Body()), &authRequest)
+
 	if err != nil {
 		return response(http.StatusBadRequest, "invalid request body"), nil
 	}
 
-	session, err := session.NewSession()
-	if err != nil {
-		return response(http.StatusInternalServerError, "error creating AWS session"), nil
-	}
-
-	appClientID := os.Getenv("APP_CLIENT_ID")
-
-	cognito := cognitoidentityprovider.New(session)
-
-	authInput := &cognitoidentityprovider.InitiateAuthInput{
-		AuthFlow: aws.String("USER_PASSWORD_AUTH"),
-		ClientId: aws.String(appClientID),
-		AuthParameters: map[string]*string{
-			"USERNAME": aws.String(authRequest.Username),
-			"PASSWORD": aws.String(authRequest.Password),
-		},
-	}
-
-	authOutput, err := cognito.InitiateAuth(authInput)
-	if err != nil {
-		return response(http.StatusUnauthorized, "authentication failed"), nil
-	}
-
-	autuResponse := AuthReponse{
-		AccessToken:  *authOutput.AuthenticationResult.AccessToken,
-		ExpiresIn:    int64(*authOutput.AuthenticationResult.ExpiresIn),
-		TokenType:    *authOutput.AuthenticationResult.TokenType,
-		RefreshToken: *authOutput.AuthenticationResult.RefreshToken,
-	}
-
-	body, err := json.Marshal(autuResponse)
+	body, err := json.Marshal(authRequest)
 	if err != nil {
 		return response(http.StatusBadRequest, "invalid request body"), nil
 	}
