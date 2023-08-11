@@ -19,40 +19,33 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
-resource "aws_cognito_user_pool" "dev-account" {
-  name = "dev-account-pool"
-}
+module "cognito" {
+  source                     = "./terraform/cognito"
+  pool_name                  = "apollo-pool"
+  pool_client_name           = "apollo-client"
+  client_allowed_oauth_flows = ["client_credentials"]
+  client_generate_secret     = true
 
-resource "aws_cognito_user_pool_client" "dev-account-client" {
-  name                                 = "dev-app-client"
-  user_pool_id                         = aws_cognito_user_pool.dev-account.id
-  allowed_oauth_flows_user_pool_client = true
-  allowed_oauth_flows                  = ["client_credentials"]
-  generate_secret                      = true
-  refresh_token_validity               = "30"
-  allowed_oauth_scopes                 = aws_cognito_resource_server.resource_server.scope_identifiers
+  domain_name = "apollo-domain-login"
 
-  depends_on = [
-    aws_cognito_resource_server.resource_server,
-    aws_cognito_user_pool_domain.main
+  resource_server_identifier = "http://api.apollo.resource-server.com"
+  resource_server_name       = "apollo-resource-server"
+  resource_scopes = [
+    {
+      scope_name        = "read"
+      scope_description = "read"
+    },
+    {
+      scope_name        = "write"
+      scope_description = "write"
+    }
   ]
-}
 
-resource "aws_cognito_resource_server" "resource_server" {
-  identifier = "https://apollo.com"
-  name       = "apollo"
-
-  scope {
-    scope_name        = "read"
-    scope_description = "read"
+  tags = {
+    Service     = "project-x",
+    Environment = "Development",
+    Name        = "Development projetct cognito"
   }
-
-  user_pool_id = aws_cognito_user_pool.dev-account.id
-}
-
-resource "aws_cognito_user_pool_domain" "main" {
-  domain       = "apollo-domain-login"
-  user_pool_id = aws_cognito_user_pool.dev-account.id
 }
 
 resource "aws_api_gateway_rest_api" "sit" {
@@ -118,18 +111,10 @@ resource "aws_api_gateway_deployment" "deployment" {
   stage_name  = "dev"
 }
 
-output "user_pool_id" {
-  value = aws_cognito_user_pool.dev-account.id
-}
-
-output "app_client_id" {
-  value = aws_cognito_user_pool_client.dev-account-client.id
-}
-
 output "api_gateway_url" {
   value = aws_api_gateway_deployment.deployment.invoke_url
 }
 
-output "aws_cognito_resource_server" {
-  value = aws_cognito_resource_server.resource_server.scope_identifiers
+output "name" {
+  value = module.cognito.aws_cognito_user_pool_arn
 }
