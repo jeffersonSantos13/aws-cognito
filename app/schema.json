@@ -1,0 +1,93 @@
+{
+  "ApolloApp": {
+      "entityTypes": {
+          "User": {
+              "shape": {
+                  "type": "Record",
+                  "attributes": {
+                      "scope": {
+                          "attributes": {},
+                          "type": "Record"
+                      },
+                      "sub": {
+                          "type": "String"
+                      }
+                  }
+              },
+              "memberOfTypes": []
+          },
+          "Ticker": {
+              "memberOfTypes": [],
+              "shape": {
+                  "attributes": {
+                      "user": {
+                          "type": "Entity",
+                          "name": "User"
+                      }
+                  },
+                  "type": "Record"
+              }
+          }
+      },
+      "actions": {
+          "createTicker": {
+              "appliesTo": {
+                  "resourceTypes": [
+                      "Ticker"
+                  ],
+                  "context": {
+                      "type": "Record",
+                      "attributes": {
+                          "referrer": {
+                              "type": "Entity",
+                              "name": "User"
+                          }
+                      }
+                  },
+                  "principalTypes": [
+                      "User"
+                  ]
+              }
+          },
+          "readTicker": {
+              "appliesTo": {
+                  "context": {
+                      "type": "Record",
+                      "attributes": {
+                          "referrer": {
+                              "type": "Entity",
+                              "name": "User"
+                          }
+                      }
+                  },
+                  "resourceTypes": [
+                      "Ticker"
+                  ],
+                  "principalTypes": [
+                      "User"
+                  ]
+              }
+          },
+          "updateTicker": {
+              "appliesTo": {
+                  "resourceTypes": [
+                      "Ticker"
+                  ],
+                  "principalTypes": [
+                      "User"
+                  ]
+              }
+          }
+      },
+      "commonTypes": {
+          "shape": {
+              "type": "Record",
+              "attributes": {
+                  "sub": {
+                      "type": "String"
+                  }
+              }
+          }
+      }
+  }
+}
